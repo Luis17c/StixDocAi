@@ -1,0 +1,130 @@
+Fluxo de execução:
+
+Definir Intervalo de Datas Retroativas:
+
+Inicialmente, a automação calcula a quantidade de dias retroativos com base no parâmetro retroactiveDays fornecido no contexto (this.ctx). Se o valor não estiver definido, o padrão será de 7 dias.
+today: Define a data atual.
+startDate: Calcula a data de início do intervalo retroativo, considerando os dias definidos.
+Requisição HTTP - Consulta de Admissão de Funcionários:
+
+Método: 'POST'
+URL: wsDataServer/IwsDataServer
+Parâmetros Necessários:
+filter: String que aplica o filtro "PFunc.DATAADMISSAO BETWEEN startDate AND today" para restringir a busca aos funcionários admitidos dentro do intervalo calculado.
+
+Filtragem de Usuários por Parâmetros Específicos:
+
+A automação filtra os usuários obtidos na consulta anterior, retendo apenas aqueles que atendem aos critérios: UTILIZAPONTO === 'Sim' (utilizam o sistema de ponto) e DESCRICAOSITUACAO === 'Ativo' (status ativo).
+Processamento Paralelo de Usuários Filtrados:
+
+Em seguida, a automação utiliza uma função parallel para processar os usuários filtrados de forma assíncrona, chamando executeParallel para cada usuário no array filteredItems e aplicando as opções especificadas em parallelOptions.
+Uma entrada de log marca que os usuários foram processados com sucesso no intervalo.
+Execução Individual por Usuário:
+
+Para cada usuário processado em executeParallel, a automação inicializa o processo de conversão do usuário, logando o início da operação.
+
+Verificação de Existência do Usuário:
+
+A automação chama a função checkUserFn para verificar se o usuário já existe no sistema, utilizando o CPF do usuário formatado como string de 11 dígitos.
+Parâmetros necessários:
+userCPF: CPF do usuário formatado.
+dictionaryUtil: Instância do dicionário para consulta e armazenamento de dados.
+controlService: Serviço de controle para consulta de dados de usuário.
+
+A função realiza uma verificação detalhada:
+Consulta o dicionário (dictionaryUtil.users.get) para determinar se o CPF do usuário já está registrado.
+Se o CPF estiver registrado, realiza uma chamada ao controlService.getById para verificar a presença do usuário pelo ID.
+Retorna false caso o usuário não esteja presente no dicionário ou na resposta do serviço de controle (statusCode 404).
+Retorna o corpo da resposta (body) do serviço de controle caso o usuário esteja registrado.
+Requisição HTTP - Verificação de Usuário:
+
+Método: GET
+URL: person/{id}
+Parâmetro necessário:
+id: ID do usuário obtido a partir do dicionário de usuários (se disponível).
+
+Verificação de Existência do Departamento:
+
+A automação chama checkDepartmentFn para verificar se o departamento já existe no sistema, usando o nome do departamento (NOMEDEPARTAMENTO) do usuário atual.
+Parâmetros necessários:
+departmentName: Nome do departamento (NOMEDEPARTAMENTO).
+dictionaryUtil: Utilitário de dicionário para consulta e armazenamento de dados de departamento.
+controlService: Serviço de controle para consulta de dados de departamento.
+Estrutura de Decisão (IF):
+
+Condição: Caso o departamento já exista (departmentAlreadyExists), o fluxo prossegue para a atualização do departamento com base nos dados disponíveis; caso contrário, cria o departamento.
+Criação ou Atualização do Departamento:
+
+A automação chama createOrUpdateDepartmentFn para converter e criar/atualizar os dados do departamento.
+Se o ID do departamento (department.id) estiver presente, o departamento existente será atualizado com os dados convertidos.
+Se o ID do departamento estiver ausente, um novo departamento será criado.
+Transformação de Dados (totvsDepartmentToControlDt):
+
+Mapeamento de dados realizado para estruturar os dados no formato necessário.
+Tabela de Mapeamento de Dados:
+
+TOTVS	CONTROL
+NOMEDEPARTAMENTO	name
+id	id
+idCompany	idCompany
+folha	folha (padrão: '')
+idApprovalFlow	idApprovalFlow (padrão: 0)
+linkedDeviceIds	linkedDeviceIds (padrão: [])
+Requisição HTTP - Criação ou Atualização do Departamento:
+
+Atualização:
+Método: PUT
+URL: department
+Parâmetro necessário:
+department: Dados do departamento convertido.
+Criação:
+Método: POST
+URL: department
+Parâmetro necessário:
+department: Dados do departamento convertido.
+Inserção no Dicionário:
+
+Após a criação do novo departamento, seu ID é registrado no dicionário (dictionaryUtil.departments.upsert) para evitar duplicidades futuras.
+Parâmetros necessários para upsert:
+departmentName: Nome do departamento.
+createdDepartment.id: ID do novo departamento criado.
+
+Transformação de Dados do Usuário (totvsUserToControlDt):
+
+A automação realiza a conversão dos dados do usuário para o formato compatível com a ControlID, chamando totvsUserToControlDt.
+Parâmetros fornecidos:
+user: Dados do usuário extraídos do sistema TOTVS.
+idDepartment: ID do departamento obtido na etapa anterior.
+idCompany: ID da empresa definido no contexto atual (this.ctx).
+Tabela de Mapeamento de Dados:
+
+TOTVS	CONTROL
+CPF	cpf
+PISPASEP	pis
+NOME	name
+CHAPA	registration
+DESCRICAOSITUACAO	status
+rfid	rfid (padrão: 0)
+barCode	barCode (padrão: 0)
+code	code (padrão: 0)
+password	password (padrão: 0)
+linkedDeviceIds	linkedDeviceIds (padrão: [])
+templates	templates (padrão: [])
+idDepartment	idDepartment
+idCompany	idCompany
+Registro de Log:
+
+A automação registra o log indicando que o usuário foi convertido com sucesso para o formato esperado pela ControlID, incluindo os dados do convertedUser.
+Requisição HTTP - Criação do Usuário:
+
+A automação cria um novo usuário no sistema ControlID com os dados convertidos.
+Método: POST
+URL: person
+Parâmetro necessário:
+user: Dados do usuário convertido para o formato ControlID.
+Inserção de Usuário no Dicionário:
+
+A automação registra o ID do usuário recém-criado no dicionário, associando o CPF do usuário (user.CPF) ao createdUser.id para facilitar futuras consultas e evitar duplicidades.
+Parâmetros necessários:
+String(user.CPF).padStart(11, 0): CPF do usuário formatado como uma string de 11 dígitos, com zeros à esquerda se necessário.
+createdUser.id: ID do usuário recém-criado no sistema ControlID.
